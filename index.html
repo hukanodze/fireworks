@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎆 Фейерверк</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #04050d;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    user-select: none;
+  }
+
+  canvas { display: block; }
+
+  #panel {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 10;
+    background: rgba(10, 12, 28, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    padding: 14px 16px;
+    color: #e8ebff;
+    backdrop-filter: blur(10px);
+    max-width: 320px;
+    transition: transform .25s ease, opacity .25s ease;
+  }
+
+  #panel.hidden { transform: translateX(-115%); opacity: 0; }
+
+  #panel h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    letter-spacing: .3px;
+  }
+
+  .group { margin-bottom: 12px; }
+
+  .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: #8b93c9;
+    margin-bottom: 6px;
+  }
+
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  button {
+    font: inherit;
+    font-size: 13px;
+    color: #dfe3ff;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 9px;
+    padding: 6px 11px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .1s;
+  }
+
+  button:hover { background: rgba(255, 255, 255, 0.14); }
+  button:active { transform: scale(.96); }
+
+  button.active {
+    background: linear-gradient(135deg, #7b5cff, #ff5ca8);
+    border-color: transparent;
+    color: #fff;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+
+  .row input[type="range"] { flex: 1; accent-color: #ff5ca8; }
+
+  #counter {
+    font-size: 12px;
+    color: #8b93c9;
+    border-top: 1px solid rgba(255,255,255,.1);
+    padding-top: 9px;
+  }
+
+  #hint {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    color: rgba(232, 235, 255, 0.55);
+    font-size: 13px;
+    text-align: center;
+    pointer-events: none;
+    text-shadow: 0 1px 6px #000;
+  }
+
+  #toggle {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 11;
+    display: none;
+    font-size: 18px;
+    padding: 6px 12px;
+  }
+
+  #panel.hidden + #toggle { display: block; }
+
+  @media (max-width: 600px) {
+    #panel { max-width: calc(100vw - 28px); }
+    #hint { font-size: 11px; width: 90%; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="sky"></canvas>
+
+<div id="panel">
+  <h1>🎆 Фейерверк</h1>
+
+  <div class="group">
+    <div class="label">Форма</div>
+    <div class="btns" id="shapes"></div>
+  </div>
+
+  <div class="group">
+    <div class="label">Цвета</div>
+    <div class="btns" id="palettes"></div>
+  </div>
+
+  <div class="group">
+    <div class="row">
+      <label><input type="checkbox" id="auto" checked> Авто</label>
+      <input type="range" id="rate" min="1" max="10" value="5">
+    </div>
+    <div class="btns">
+      <button id="salvo">💥 Залп</button>
+      <button id="clear">🧹 Очистить</button>
+      <button id="hide">✖ Скрыть</button>
+    </div>
+  </div>
+
+  <div id="counter">Запущено: <b id="count">0</b></div>
+</div>
+
+<button id="toggle">☰</button>
+
+<div id="hint">Кликните по небу — запустите салют с выбранной формой &nbsp;•&nbsp; Пробел — случайный</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('sky');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, dpr = 1;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#04050d';
+    ctx.fillRect(0, 0, W, H);
+    makeStars();
+  }
+
+  /* ---------- фоновые звёзды ---------- */
+  let stars = [];
+  function makeStars() {
+    stars = [];
+    const n = Math.round(W * H / 9000);
+    for (let i = 0; i < n; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 1.2 + 0.2,
+        a: Math.random() * 0.6 + 0.15,
+        tw: Math.random() * 2 + 1,
+        p: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  /* ---------- формы залпа ---------- */
+  function circlePoints(n, fill) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = fill ? Math.sqrt(Math.random()) : 1;
+      pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+    return pts;
+  }
+
+  function ringPoints(n, radii) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const r = radii[i % radii.length];
+      pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+    return pts;
+  }
+
+  function heartPoints(n) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * Math.PI * 2;
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+      pts.push({ x: x / 17, y: -y / 17 }); // разворот сердца вверх
+    }
+    return pts;
+  }
+
+  function starPoints(n) {
+    const outer = 1, inner = 0.45, spikes = 5;
+    const verts = [];
+    for (let i = 0; i < spikes * 2; i++) {
+      const a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+      const r = i % 2 === 0 ? outer : inner;
+      verts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+    const pts = [];
+    const seg = verts.length;
+    for (let i = 0; i < n; i++) {
+      const f = (i / n) * seg;
+      const s = Math.floor(f) % seg;
+      const t = f - Math.floor(f);
+      const a = verts[s], b = verts[(s + 1) % seg];
+      pts.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+    return pts;
+  }
+
+  function palmPoints(n) {
+    const spokes = 7;
+    const dirs = [];
+    for (let i = 0; i < spokes; i++) {
+      const a = (i / spokes) * Math.PI * 2 + Math.random() * 0.3;
+      dirs.push({ x: Math.cos(a), y: Math.sin(a) });
+    }
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const d = dirs[i % spokes];
+      const r = 0.45 + Math.random() * 0.6;
+      pts.push({ x: d.x * r, y: d.y * r });
+    }
+    return pts;
+  }
+
+  const SHAPES = {
+    sphere: { name: 'Сфера', count: 150, speed: 0.32, life: 1.6, drag: 0.965, grav: 1,
+              points: n => circlePoints(n, true) },
+    ring:   { name: 'Кольцо', count: 130, speed: 0.34, life: 1.7, drag: 0.97, grav: 0.9,
+              points: n => ringPoints(n, [1]) },
+    dbl:    { name: 'Двойное кольцо', count: 160, speed: 0.34, life: 1.8, drag: 0.97, grav: 0.9,
+              points: n => ringPoints(n, [1, 1, 1, 1, 0.62, 0.62, 0.62, 0.62]) },
+    heart:  { name: 'Сердце', count: 150, speed: 0.3, life: 1.8, drag: 0.968, grav: 0.85,
+              points: heartPoints },
+    star:   { name: 'Звезда', count: 170, speed: 0.33, life: 1.8, drag: 0.97, grav: 0.85,
+              points: starPoints },
+    willow: { name: 'Ива', count: 90, speed: 0.22, life: 2.8, drag: 0.985, grav: 1.9,
+              points: n => circlePoints(n, false) },
+    palm:   { name: 'Пальма', count: 70, speed: 0.36, life: 2.2, drag: 0.978, grav: 1.3,
+              points: palmPoints },
+    cross:  { name: 'Крест', count: 110, speed: 0.34, life: 1.7, drag: 0.97, grav: 0.9,
+              points: n => ringPoints(n, [1, 1, 1, 1, 1, 1, 1, 1]).map((p, i) =>
+                          i % 2 ? { x: p.x * 0.25, y: p.y * 0.25 } : p) }
+  };
+
+  /* ---------- палитры ---------- */
+  const PALETTES = {
+    rainbow: { name: 'Радуга', color: () => ({ h: Math.random() * 360, s: 100, l: 62 }) },
+    warm:    { name: 'Тепло',   color: () => ({ h: 10 + Math.random() * 55, s: 100, l: 60 }) },
+    cold:    { name: 'Холод',   color: () => ({ h: 185 + Math.random() * 75, s: 100, l: 62 }) },
+    neon:    { name: 'Неон',    color: () => ({ h: [288, 320, 160, 55][Math.floor(Math.random() * 4)], s: 100, l: 65 }) },
+    gold:    { name: 'Золото',  color: () => ({ h: 38 + Math.random() * 14, s: 100, l: 55 + Math.random() * 15 }) }
+  };
+
+  /* ---------- состояние UI ---------- */
+  let shape = 'sphere';
+  let palette = 'rainbow';
+  let autoOn = true;
+  let rate = 5;
+  let launched = 0;
+
+  const shapesBox = document.getElementById('shapes');
+  const palettesBox = document.getElementById('palettes');
+
+  for (const [id, cfg] of Object.entries(SHAPES)) {
+    const b = document.createElement('button');
+    b.textContent = cfg.name;
+    b.dataset.id = id;
+    if (id === shape) b.classList.add('active');
+    b.onclick = () => { shape = id; syncActive(shapesBox, id); };
+    shapesBox.appendChild(b);
+  }
+  for (const [id, cfg] of Object.entries(PALETTES)) {
+    const b = document.createElement('button');
+    b.textContent = cfg.name;
+    b.dataset.id = id;
+    if (id === palette) b.classList.add('active');
+    b.onclick = () => { palette = id; syncActive(palettesBox, id); };
+    palettesBox.appendChild(b);
+  }
+  function syncActive(box, id) {
+    [...box.children].forEach(b => b.classList.toggle('active', b.dataset.id === id));
+  }
+
+  document.getElementById('auto').onchange = e => autoOn = e.target.checked;
+  document.getElementById('rate').oninput = e => rate = +e.target.value;
+  document.getElementById('salvo').onclick = () => salvo();
+  document.getElementById('clear').onclick = () => {
+    particles.length = 0; rockets.length = 0; flashes.length = 0;
+    ctx.fillStyle = '#04050d'; ctx.fillRect(0, 0, W, H);
+  };
+  const panel = document.getElementById('panel');
+  document.getElementById('hide').onclick = () => panel.classList.add('hidden');
+  document.getElementById('toggle').onclick = () => panel.classList.remove('hidden');
+
+  /* ---------- объекты ---------- */
+  const rockets = [];
+  const particles = [];
+  const flashes = [];
+
+  function countUp() {
+    launched++;
+    document.getElementById('count').textContent = launched;
+  }
+
+  function launch(targetX, targetY, shapeId = shape, paletteId = palette) {
+    const x = targetX ?? (80 + Math.random() * Math.max(1, W - 160));
+    const y = targetY ?? (70 + Math.random() * H * 0.45);
+    const startY = H + 10;
+    // v = sqrt(2*a*s) — ракета ровно замирает на высоте y
+    rockets.push({
+      x: x + (Math.random() - 0.5) * 40,
+      y: startY,
+      tx: x, ty: y,
+      vx: (Math.random() - 0.5) * 0.6,
+      vy: -Math.sqrt(2 * GRAV_FRAMES * (startY - y)),
+      shapeId, paletteId
+    });
+    countUp();
+  }
+
+  function salvo() {
+    const n = 3 + Math.floor(Math.random() * 4);
+    const ids = Object.keys(SHAPES);
+    for (let i = 0; i < n; i++) {
+      setTimeout(() => {
+        launch(undefined, undefined,
+          ids[Math.floor(Math.random() * ids.length)],
+          Math.random() < 0.5 ? palette : Object.keys(PALETTES)[Math.floor(Math.random() * 5)]);
+      }, i * 180);
+    }
+  }
+
+  /* ---------- взрыв ---------- */
+  function explode(x, y, shapeId, paletteId) {
+    const cfg = SHAPES[shapeId] || SHAPES.sphere;
+    const pal = PALETTES[paletteId] || PALETTES.rainbow;
+    const pts = cfg.points(cfg.count);
+    const base = pal.color();
+    const multi = paletteId === 'rainbow' || paletteId === 'neon';
+
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const j = 0.92 + Math.random() * 0.16;
+      const col = multi && Math.random() < 0.55
+        ? pal.color()
+        : (Math.random() < 0.12 ? { h: (base.h + 180) % 360, s: 90, l: 70 } : base);
+      const life = cfg.life * (0.75 + Math.random() * 0.5);
+      particles.push({
+        x, y,
+        vx: p.x * cfg.speed * 60 * j,
+        vy: p.y * cfg.speed * 60 * j,
+        life, maxLife: life,
+        h: col.h, s: col.s, l: col.l,
+        drag: cfg.drag, grav: cfg.grav,
+        size: shapeId === 'willow' ? 1.7 : 2.1 + Math.random() * 1.2,
+        tw: Math.random() < 0.3
+      });
+    }
+
+    flashes.push({ x, y, r: 8, life: 0.35, maxLife: 0.35, h: base.h });
+    shake = Math.min(shake + 2.5, 7);
+  }
+
+  /* ---------- цикл ---------- */
+  const GRAV_FRAMES = 0.0009;   // гравитация (px/кадр²), кадр ~16.7 мс
+  let last = performance.now();
+  let autoTimer = 0.5;
+  let shake = 0;
+
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+
+    // авто-запуск
+    if (autoOn) {
+      autoTimer -= dt;
+      if (autoTimer <= 0) {
+        const burst = Math.random() < 0.25 ? 2 : 1;
+        for (let i = 0; i < burst; i++) launch();
+        autoTimer = (1.6 - rate * 0.13) * (0.6 + Math.random() * 0.8);
+      }
+    }
+
+    // смещение от "тряски"
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (shake > 0.05) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+      shake *= 0.88;
+    }
+
+    // послесвечение: лёгкое затухание кадра
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(4, 5, 13, 0.17)';
+    ctx.fillRect(-20, -20, W + 40, H + 40);
+
+    // звёзды
+    ctx.globalCompositeOperation = 'lighter';
+    const t = now / 1000;
+    for (const s of stars) {
+      const a = s.a * (0.6 + 0.4 * Math.sin(t * s.tw + s.p));
+      ctx.fillStyle = ${rgba(200, 210, 255, ${{a});
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ракеты
+    for (let i = rockets.length - 1; i >= 0; i--) {
+      const r = rockets[i];
+      r.vy += GRAV_FRAMES * dt * 60;  // гравитация
+      r.x += r.vx * dt * 60;
+      r.y += r.vy * dt * 60;
+
+      // искры за ракетой
+      ctx.fillStyle = ${hsla(${{45 + Math.random() * 20}, 100%, 70%, .8);
+      for (let k = 0; k < 2; k++) {
+        ctx.fillRect(r.x + (Math.random() - 0.5) * 4, r.y + Math.random() * 8, 1.6, 1.6);
+      }
+      ctx.fillStyle = 'rgba(255,255,255,.95)';
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (r.vy >= 0 || r.y <= r.ty) {
+        explode(r.x, r.y, r.shapeId, r.paletteId);
+        rockets.splice(i, 1);
+      }
+    }
+
+    // вспышки взрыва
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i];
+      f.life -= dt;
+      if (f.life <= 0) { flashes.splice(i, 1); continue; }
+      const k = f.life / f.maxLife;
+      const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * (2.6 - k));
+      grad.addColorStop(0, ${rgba(255,255,255,${{0.8 * k}));
+      grad.addColorStop(0.4, ${hsla(${{f.h}, 100%, 70%, ${{0.5 * k}));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r * (2.6 - k), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // частицы
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+
+      p.vy += GRAV_FRAMES * p.grav * dt * 60;
+      p.vx *= p.drag;
+      p.vy *= p.drag;
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+
+      const k = p.life / p.maxLife;
+      let a = Math.pow(k, 0.7);
+      if (p.tw) a *= 0.5 + 0.5 * Math.sin(t * 22 + p.x); // мерцание
+      if (p.y > H + 40) { particles.splice(i, 1); continue; }
+
+      ctx.fillStyle = ${hsla(${{p.h}, ${{p.s}%, ${{p.l}%, ${{a});
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (0.5 + 0.5 * k), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- ввод ---------- */
+  canvas.addEventListener('pointerdown', e => launch(e.clientX, e.clientY));
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      const ids = Object.keys(SHAPES);
+      launch(undefined, undefined, ids[Math.floor(Math.random() * ids.length)]);
+    }
+    if (e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р')
+      panel.classList.toggle('hidden');
+  });
+
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(frame);
+
+  // первый салют
+  setTimeout(salvo, 400);
+})();
+</script>
+</body>
+</html>
